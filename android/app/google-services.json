@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1065367900683",
+    "project_id": "utsflutter-fb713",
+    "storage_bucket": "utsflutter-fb713.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1065367900683:android:11cc15dd88d1e4967e6d0e",
+        "android_client_info": {
+          "package_name": "com.tes.uts_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-zemunxpXzkAxWOLzxfPD2sYiOIkhUPg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
