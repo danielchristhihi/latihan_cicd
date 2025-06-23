@@ -11,8 +11,25 @@ class _StockReportPageState extends State<StockReportPage> {
   DateTime? _startDate;
   DateTime? _endDate;
   bool _showAll = false;
+  DocumentReference? _selectedProductRef;
+  List<DocumentSnapshot> _products = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProducts();
+  }
+
+  Future<void> _loadProducts() async {
+    QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('products').get();
+    setState(() {
+      _products = snapshot.docs;
+    });
+  }
 
   Future<List<Map<String, dynamic>>> _fetchStockReports({bool showAll = false}) async {
+    if (_selectedProductRef == null) return [];
+
     String? start;
     String? end;
 
@@ -24,7 +41,6 @@ class _StockReportPageState extends State<StockReportPage> {
     int initialStockIn = 0;
     int initialStockOut = 0;
 
-    // Hitung stok awal hanya jika filter tanggal aktif
     if (!showAll && start != null) {
       QuerySnapshot inBeforeSnapshot = await FirebaseFirestore.instance
           .collection('purchaseGoodsReceipts')
@@ -32,7 +48,9 @@ class _StockReportPageState extends State<StockReportPage> {
           .get();
 
       for (var doc in inBeforeSnapshot.docs) {
-        QuerySnapshot detailSnapshot = await doc.reference.collection('details').get();
+        QuerySnapshot detailSnapshot = await doc.reference.collection('details')
+            .where('product_ref', isEqualTo: _selectedProductRef)
+            .get();
         for (var detail in detailSnapshot.docs) {
           initialStockIn += (detail.get('qty') as num).toInt();
         }
@@ -44,7 +62,9 @@ class _StockReportPageState extends State<StockReportPage> {
           .get();
 
       for (var doc in outBeforeSnapshot.docs) {
-        QuerySnapshot detailSnapshot = await doc.reference.collection('details').get();
+        QuerySnapshot detailSnapshot = await doc.reference.collection('details')
+            .where('product_ref', isEqualTo: _selectedProductRef)
+            .get();
         for (var detail in detailSnapshot.docs) {
           initialStockOut += (detail.get('qty') as num).toInt();
         }
@@ -75,31 +95,39 @@ class _StockReportPageState extends State<StockReportPage> {
     QuerySnapshot inSnapshot = await inQuery.orderBy('post_date').get();
     for (var doc in inSnapshot.docs) {
       int totalQty = 0;
-      QuerySnapshot detailSnapshot = await doc.reference.collection('details').get();
+      QuerySnapshot detailSnapshot = await doc.reference.collection('details')
+          .where('product_ref', isEqualTo: _selectedProductRef)
+          .get();
       for (var detail in detailSnapshot.docs) {
         totalQty += (detail.get('qty') as num).toInt();
       }
-      reports.add({
-        'date': doc.get('post_date'),
-        'no_form': doc.get('no_form'),
-        'in_qty': totalQty,
-        'out_qty': 0,
-      });
+      if(totalQty > 0) {
+        reports.add({
+          'date': doc.get('post_date'),
+          'no_form': doc.get('no_form'),
+          'in_qty': totalQty,
+          'out_qty': 0,
+        });
+      }
     }
 
     QuerySnapshot outSnapshot = await outQuery.orderBy('post_date').get();
     for (var doc in outSnapshot.docs) {
       int totalQty = 0;
-      QuerySnapshot detailSnapshot = await doc.reference.collection('details').get();
+      QuerySnapshot detailSnapshot = await doc.reference.collection('details')
+          .where('product_ref', isEqualTo: _selectedProductRef)
+          .get();
       for (var detail in detailSnapshot.docs) {
         totalQty += (detail.get('qty') as num).toInt();
       }
-      reports.add({
-        'date': doc.get('post_date'),
-        'no_form': doc.get('no_form'),
-        'in_qty': 0,
-        'out_qty': totalQty,
-      });
+      if(totalQty > 0) {
+        reports.add({
+          'date': doc.get('post_date'),
+          'no_form': doc.get('no_form'),
+          'in_qty': 0,
+          'out_qty': totalQty,
+        });
+      }
     }
 
     reports.sort((a, b) {
@@ -111,7 +139,6 @@ class _StockReportPageState extends State<StockReportPage> {
     return reports;
   }
 
-
   Future<void> _selectStartDate(BuildContext context) async {
     final picked = await showDatePicker(
       context: context,
@@ -122,7 +149,7 @@ class _StockReportPageState extends State<StockReportPage> {
 
     if (picked != null) setState(() {
       _startDate = picked;
-      _showAll = false; // Reset mode tampil semua ke false
+      _showAll = false;
     });
   }
 
@@ -136,7 +163,7 @@ class _StockReportPageState extends State<StockReportPage> {
 
     if (picked != null) setState(() {
       _endDate = picked;
-      _showAll = false; // Reset mode tampil semua ke false
+      _showAll = false;
     });
   }
 
@@ -151,6 +178,22 @@ class _StockReportPageState extends State<StockReportPage> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
+            DropdownButton<DocumentReference>(
+              hint: Text("Pilih Produk"),
+              value: _selectedProductRef,
+              items: _products.map((doc) {
+                return DropdownMenuItem<DocumentReference>(
+                  value: doc.reference,
+                  child: Text(doc['name']),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedProductRef = value;
+                  _showAll = false;
+                });
+              },
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -160,8 +203,8 @@ class _StockReportPageState extends State<StockReportPage> {
                   onPressed: () {
                     setState(() {
                       _showAll = true;
-                      _startDate = null; // reset date picker
-                      _endDate = null;   // reset date picker
+                      _startDate = null;
+                      _endDate = null;
                     });
                   },
                   child: Text('Tampilkan Semua'),
@@ -170,56 +213,61 @@ class _StockReportPageState extends State<StockReportPage> {
             ),
             SizedBox(height: 20),
             Expanded(
-              child: (_startDate == null || _endDate == null) && !_showAll
-                  ? Center(child: Text('Silakan pilih periode tanggal.'))
-                  : FutureBuilder<List<Map<String, dynamic>>>(
-                      future: _fetchStockReports(showAll: _showAll),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return Center(child: CircularProgressIndicator());
-                        }
-                        if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                          return Center(child: Text('Tidak ada data.'));
-                        }
+              child: (_selectedProductRef == null)
+                  ? Center(child: Text('Silakan pilih produk.'))
+                  : (_startDate == null || _endDate == null) && !_showAll
+                      ? Center(child: Text('Silakan pilih periode tanggal.'))
+                      : FutureBuilder<List<Map<String, dynamic>>>(
+                          future: _fetchStockReports(showAll: _showAll),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return Center(child: CircularProgressIndicator());
+                            }
+                            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                              return Center(child: Text('Tidak ada data.'));
+                            }
 
-                        final reports = snapshot.data!;
-                        int cumulativeStock = 0;
+                            final reports = snapshot.data!;
+                            int cumulativeStock = 0;
 
-                        return SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: DataTable(
-                            columns: const [
-                              DataColumn(label: Text('Tanggal')),
-                              DataColumn(label: Text('No Form')),
-                              DataColumn(label: Text('Masuk')),
-                              DataColumn(label: Text('Keluar')),
-                              DataColumn(label: Text('Saldo')),
-                            ],
-                            rows: reports.map((report) {
-                              if (report['no_form'] == 'Stok Awal') {
-                                cumulativeStock = report['initial_stock'];
-                                return DataRow(cells: [
-                                  DataCell(Text('')),
-                                  DataCell(Text('Stok Awal')),
-                                  DataCell(Text('')),
-                                  DataCell(Text('')),
-                                  DataCell(Text(cumulativeStock.toString())),
-                                ]);
-                              } else {
-                                cumulativeStock += (report['in_qty'] as int) - (report['out_qty'] as int);
-                                return DataRow(cells: [
-                                  DataCell(Text(report['date'] ?? '-')),
-                                  DataCell(Text(report['no_form'])),
-                                  DataCell(Text(report['in_qty'].toString())),
-                                  DataCell(Text(report['out_qty'].toString())),
-                                  DataCell(Text(cumulativeStock.toString())),
-                                ]);
-                              }
-                            }).toList(),
-                          ),
-                        );
-                      },
-                    ),
+                            return SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.vertical, // Tambahan scroll vertikal di sini
+                                child: DataTable(
+                                  columns: const [
+                                    DataColumn(label: Text('Tanggal')),
+                                    DataColumn(label: Text('No Form')),
+                                    DataColumn(label: Text('Masuk')),
+                                    DataColumn(label: Text('Keluar')),
+                                    DataColumn(label: Text('Saldo')),
+                                  ],
+                                  rows: reports.map((report) {
+                                    if (report['no_form'] == 'Stok Awal') {
+                                      cumulativeStock = report['initial_stock'];
+                                      return DataRow(cells: [
+                                        DataCell(Text('')),
+                                        DataCell(Text('Stok Awal')),
+                                        DataCell(Text('')),
+                                        DataCell(Text('')),
+                                        DataCell(Text(cumulativeStock.toString())),
+                                      ]);
+                                    } else {
+                                      cumulativeStock += (report['in_qty'] as int) - (report['out_qty'] as int);
+                                      return DataRow(cells: [
+                                        DataCell(Text(report['date'] ?? '-')),
+                                        DataCell(Text(report['no_form'])),
+                                        DataCell(Text(report['in_qty'].toString())),
+                                        DataCell(Text(report['out_qty'].toString())),
+                                        DataCell(Text(cumulativeStock.toString())),
+                                      ]);
+                                    }
+                                  }).toList(),
+                                ),
+                              ),
+                            );
+                          }
+                        ),
             ),
           ],
         ),
