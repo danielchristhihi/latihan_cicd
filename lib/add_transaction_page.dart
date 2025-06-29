@@ -36,32 +36,39 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   final TextEditingController _qtyController = TextEditingController();
   final TextEditingController _priceController = TextEditingController();
   final TextEditingController _unitNameController = TextEditingController();
+  final TextEditingController _batchNumberController = TextEditingController();
+  final TextEditingController _expirationDateController = TextEditingController();
+
 
   bool _isSaving = false;
   List<Map<String, dynamic>> _details = [];
 
   void _addDetail() {
-  if (_detailFormKey.currentState!.validate()) {
-    final double qty = double.tryParse(_qtyController.text) ?? 0;
-    final double price = double.tryParse(_priceController.text) ?? 0;
-    final double subtotal = qty * price;
+    if (_detailFormKey.currentState!.validate()) {
+      final double qty = double.tryParse(_qtyController.text) ?? 0;
+      final double price = double.tryParse(_priceController.text) ?? 0;
+      final double subtotal = qty * price;
 
-    setState(() {
-      _details.add({
-        'product_ref': _selectedProductRef,
-        'qty': qty,
-        'price': price,
-        'subtotal': subtotal,
-        'unit_name': _unitNameController.text,
+      setState(() {
+        _details.add({
+          'product_ref': _selectedProductRef,
+          'qty': qty,
+          'price': price,
+          'subtotal': subtotal,
+          'unit_name': _unitNameController.text,
+          'batch_number': _batchNumberController.text,
+          'expiration_date': _expirationDateController.text,
+        });
+
+        _selectedProductRef = null;
+        _qtyController.clear();
+        _priceController.clear();
+        _unitNameController.clear();
+        _batchNumberController.clear();
+        _expirationDateController.clear();
       });
-
-      _selectedProductRef = null;
-      _qtyController.clear();
-      _priceController.clear();
-      _unitNameController.clear();
-    });
+    }
   }
-}
 
   @override
   void initState() {
@@ -142,6 +149,20 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
     }
   }
 
+  Future<void> _selectExpirationDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        _expirationDateController.text = DateFormat('yyyy-MM-dd').format(picked);
+      });
+    }
+  }
+
   Future<void> _saveTransaction() async {
     if (!_formKey.currentState!.validate() || _details.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -190,6 +211,8 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           'price': detail['price'],
           'subtotal': detail['subtotal'],
           'unit_name': detail['unit_name'],
+          'batch_number': detail['batch_number'],
+          'expiration_date': detail['expiration_date'],
         });
 
         // Update stok produk
@@ -325,6 +348,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                           decoration: InputDecoration(labelText: 'Unit Name'),
                           validator: (value) => value == null || value.isEmpty ? 'Wajib diisi' : null,
                         ),
+                        TextFormField(
+                          controller: _batchNumberController,
+                          decoration: InputDecoration(labelText: 'Batch Number'),
+                          validator: (value) => value == null || value.isEmpty ? 'Wajib diisi' : null,
+                        ),
+                        TextFormField(
+                          controller: _expirationDateController,
+                          readOnly: true,
+                          onTap: () => _selectExpirationDate(context),
+                          decoration: InputDecoration(
+                            labelText: 'Expiration Date',
+                            suffixIcon: Icon(Icons.calendar_today),
+                          ),
+                          validator: (value) => value == null || value.isEmpty ? 'Wajib diisi' : null,
+                        ),
                         SizedBox(height: 10),
                         ElevatedButton(
                           onPressed: _addDetail,
@@ -336,9 +374,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
                   SizedBox(height: 20),
                   Text("Daftar Detail Barang:", style: TextStyle(fontWeight: FontWeight.bold)),
                   ..._details.map((item) => ListTile(
-                        title: Text(_getProductName(item['product_ref'])),
-                        subtitle: Text('Qty: ${item['qty']} ${item['unit_name']}, Harga: ${item['price']}, Subtotal: ${item['subtotal']}'),
-                      )),
+                    title: Text(_getProductName(item['product_ref'])),
+                    subtitle: Text(
+                      'Batch: ${item['batch_number']}, Exp: ${item['expiration_date']}\n'
+                      'Qty: ${item['qty']} ${item['unit_name']}, Harga: ${item['price']}, Subtotal: ${item['subtotal']}',
+                    ),
+                  )),
                   SizedBox(height: 20),
                   ElevatedButton(
                     onPressed: _saveTransaction,

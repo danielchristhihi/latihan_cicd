@@ -46,60 +46,106 @@ class ProductsPage extends StatelessWidget {
               final data = productDoc.data() as Map<String, dynamic>;
               final stock = data['stock'] ?? 0;
 
-              return ListTile(
-                title: Text(data['name'] ?? 'Tanpa Nama Produk'),
-                subtitle: Text('Stok: $stock'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.edit, color: Colors.blue),
-                      onPressed: () {
-                        _showEditDialog(
-                          context,
-                          productDoc.id,
-                          data['name'],
-                          stock.toString(),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Hapus Produk'),
-                            content: Text('Yakin ingin menghapus produk ini?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: Text('Batal'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: Text('Hapus'),
-                              ),
-                            ],
-                          ),
-                        );
+              return FutureBuilder<Map<String, int>>(
+                future: _fetchBatchInfo(productDoc.reference),
+                builder: (context, batchSnapshot) {
+                  if (!batchSnapshot.hasData) {
+                    return ListTile(
+                      title: Text(data['name'] ?? 'Loading...'),
+                      subtitle: Text('Stok: $stock\nMemuat batch...'),
+                    );
+                  }
 
-                        if (confirm == true) {
-                          await FirebaseFirestore.instance
-                              .collection('products')
-                              .doc(productDoc.id)
-                              .delete();
-                        }
-                      },
+                  final batchInfo = batchSnapshot.data!;
+                  final batchDetails = batchInfo.entries
+                      .map((e) => 'Batch ${e.key}: ${e.value}')
+                      .join('\n');
+
+                  return ListTile(
+                    title: Text(data['name'] ?? 'Tanpa Nama Produk'),
+                    subtitle: Text('Stok Total: $stock\n$batchDetails'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () {
+                            _showEditDialog(
+                              context,
+                              productDoc.id,
+                              data['name'],
+                              stock.toString(),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.delete, color: Colors.red),
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text('Hapus Produk'),
+                                content: Text('Yakin ingin menghapus produk ini?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, false),
+                                    child: Text('Batal'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context, true),
+                                    child: Text('Hapus'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirm == true) {
+                              await FirebaseFirestore.instance
+                                  .collection('products')
+                                  .doc(productDoc.id)
+                                  .delete();
+                            }
+                          },
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               );
             },
           );
         },
       ),
     );
+  }
+
+  Future<Map<String, int>> _fetchBatchInfo(DocumentReference productRef) async {
+    Map<String, int> batchMap = {};
+
+    QuerySnapshot receiptsSnapshot = await FirebaseFirestore.instance
+        .collection('purchaseGoodsReceipts')
+        .get();
+
+    for (var doc in receiptsSnapshot.docs) {
+      QuerySnapshot detailSnapshot = await doc.reference
+          .collection('details')
+          .where('product_ref', isEqualTo: productRef)
+          .get();
+
+      for (var detailDoc in detailSnapshot.docs) {
+        var data = detailDoc.data() as Map<String, dynamic>;
+        String batchNumber = data['batch_number'] ?? 'Unknown';
+        int qty = (data['qty'] ?? 0) as int;
+
+        if (batchMap.containsKey(batchNumber)) {
+          batchMap[batchNumber] = batchMap[batchNumber]! + qty;
+        } else {
+          batchMap[batchNumber] = qty;
+        }
+      }
+    }
+
+    return batchMap;
   }
 
   void _showEditDialog(
