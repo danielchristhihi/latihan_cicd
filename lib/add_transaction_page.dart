@@ -20,12 +20,12 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   String? _selectedWarehouseRef;
 
   String _getProductName(String productRef) {
-  final matchedProduct = _productOptions.where((product) => 'products/${product.id}' == productRef).toList();
-  if (matchedProduct.isNotEmpty) {
-    return matchedProduct.first.get('name') ?? 'Tanpa Nama';
+    final matchedProduct = _productOptions.where((product) => 'products/${product.id}' == productRef).toList();
+    if (matchedProduct.isNotEmpty) {
+      return matchedProduct.first.get('name') ?? 'Tanpa Nama';
+    }
+    return 'Produk tidak ditemukan';
   }
-  return 'Produk tidak ditemukan';
-}
 
   final TextEditingController _noFormController = TextEditingController();
   final TextEditingController _postDateController = TextEditingController();
@@ -203,11 +203,13 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
       for (var detail in _details) {
         final productRef = FirebaseFirestore.instance.doc(detail['product_ref']);
+        final warehouseRef = FirebaseFirestore.instance.doc(_selectedWarehouseRef!);
+        final double qty = detail['qty'];
 
         // Simpan detail transaksi
         await transactionRef.collection('details').add({
           'product_ref': productRef,
-          'qty': detail['qty'],
+          'qty': qty,
           'price': detail['price'],
           'subtotal': detail['subtotal'],
           'unit_name': detail['unit_name'],
@@ -217,13 +219,44 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
 
         // Update stok produk
         await FirebaseFirestore.instance.runTransaction((transaction) async {
-          DocumentSnapshot snapshot = await transaction.get(productRef);
-          final currentStock = snapshot.get('stock') ?? 0;
-          final updatedStock = currentStock + detail['qty'];
-          transaction.update(productRef, {'stock': updatedStock});
+          DocumentSnapshot productSnapshot = await transaction.get(productRef);
+          final currentProductStock = productSnapshot.get('stock') ?? 0;
+          transaction.update(productRef, {'stock': currentProductStock + qty});
         });
+
+        // Update stok gudang
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          DocumentSnapshot warehouseSnapshot = await transaction.get(warehouseRef);
+          final currentWarehouseStock = warehouseSnapshot.get('stock') ?? 0;
+          transaction.update(warehouseRef, {'stock': currentWarehouseStock + qty});
+        });
+
+        // Update stok per produk per gudang (warehousesStock)
+        final QuerySnapshot stockQuery = await FirebaseFirestore.instance
+            .collection('warehousesStock')
+            .where('warehouse_ref', isEqualTo: warehouseRef)
+            .where('product_ref', isEqualTo: productRef)
+            .limit(1)
+            .get();
+
+        if (stockQuery.docs.isNotEmpty) {
+          final docRef = stockQuery.docs.first.reference;
+          await FirebaseFirestore.instance.runTransaction((transaction) async {
+            final stockSnapshot = await transaction.get(docRef);
+            final currentStock = stockSnapshot.get('stock') ?? 0;
+            transaction.update(docRef, {'stock': currentStock + qty});
+          });
+        } else {
+          await FirebaseFirestore.instance.collection('warehousesStock').add({
+            'warehouse_ref': warehouseRef,
+            'product_ref': productRef,
+            'stock': qty,
+          });
+        }
       }
 
+
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Penerimaan berhasil disimpan')));
       Navigator.pop(context);
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

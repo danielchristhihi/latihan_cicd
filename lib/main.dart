@@ -11,6 +11,7 @@ import 'package:uts_flutter/suppliers.dart';
 import 'package:uts_flutter/warehouses.dart';
 import 'package:uts_flutter/stock_report.dart';
 import 'shipment_home_page.dart';
+import 'package:uts_flutter/mutasi.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,20 @@ void main() async {
   }
 
   runApp(const MainApp());
+}
+
+class MutasiBarangApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Mutasi Barang',
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+      ),
+      home: MutationPage(),
+      debugShowCheckedModeBanner: false,
+    );
+  }
 }
 
 class MainApp extends StatelessWidget {
@@ -227,6 +242,7 @@ class _HomePageState extends State<HomePage> {
       SuppliersPage(),
       WarehousesPage(),
       StockReportPage(),
+      MutationPage()
     ];
 
     final titles = [
@@ -236,6 +252,7 @@ class _HomePageState extends State<HomePage> {
       'Supplier',
       'Warehouse',
       'Stock Report',
+      'Mutasi'
     ];
 
     return Scaffold(
@@ -301,6 +318,15 @@ class _HomePageState extends State<HomePage> {
               selected: _selectedIndex == 5,
               onTap: () {
                 setState(() => _selectedIndex = 5);
+                Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.assignment),
+              title: Text('Mutasi'),
+              selected: _selectedIndex == 6,
+              onTap: () {
+                setState(() => _selectedIndex = 6);
                 Navigator.pop(context);
               },
             ),

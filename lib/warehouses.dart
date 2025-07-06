@@ -42,90 +42,65 @@ class WarehousesPage extends StatelessWidget {
           return ListView.builder(
             itemCount: warehouses.length,
             itemBuilder: (context, index) {
-              final productDoc = warehouses[index];
-              final data = productDoc.data() as Map<String, dynamic>;
+              final warehouseDoc = warehouses[index];
+              final warehouseData = warehouseDoc.data() as Map<String, dynamic>;
 
-              return ListTile(
-                title: Text(data['name'] ?? 'Tanpa Nama Warehouse'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.edit, color: Colors.blue),
-                      onPressed: () {
-                        _showEditDialog(context, productDoc.id, data['name']);
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () async {
-                        final confirm = await showDialog<bool>(
-                          context: context,
-                          builder: (context) => AlertDialog(
-                            title: Text('Hapus Warehouse'),
-                            content: Text('Yakin ingin menghapus warehouse ini?'),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, false),
-                                child: Text('Batal'),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(context, true),
-                                child: Text('Hapus'),
-                              ),
-                            ],
-                          ),
-                        );
+              return FutureBuilder<QuerySnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('warehousesStock')
+                    .where('warehouse_ref',
+                        isEqualTo: FirebaseFirestore.instance
+                            .doc('warehouses/${warehouseDoc.id}'))
+                    .get(),
+                builder: (context, stockSnapshot) {
+                  if (!stockSnapshot.hasData) {
+                    return ListTile(
+                      title: Text(warehouseData['name'] ?? 'Tanpa Nama'),
+                      subtitle: Text('Memuat stok...'),
+                    );
+                  }
 
-                        if (confirm == true) {
-                          await FirebaseFirestore.instance
-                              .collection('warehouses')
-                              .doc(productDoc.id)
-                              .delete();
-                        }
-                      },
-                    ),
-                  ],
-                ),
+                  final stockDocs = stockSnapshot.data!.docs;
+                  final totalStock = stockDocs.fold<double>(
+                    0,
+                    (sum, doc) => sum + (doc.get('stock') ?? 0),
+                  );
+
+                  return ExpansionTile(
+                    title: Text(warehouseData['name'] ?? 'Tanpa Nama'),
+                    subtitle: Text('Total Stock: $totalStock'),
+                    children: stockDocs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final productRef = data['product_ref'] as DocumentReference;
+                      final stockQty = data['stock'] ?? 0;
+
+                      return FutureBuilder<DocumentSnapshot>(
+                        future: productRef.get(),
+                        builder: (context, productSnapshot) {
+                          if (!productSnapshot.hasData) {
+                            return ListTile(
+                              title: Text('Memuat produk...'),
+                            );
+                          }
+
+                          final productData = productSnapshot.data!.data()
+                              as Map<String, dynamic>?;
+
+                          final productName = productData?['name'] ?? 'Tanpa Nama Produk';
+
+                          return ListTile(
+                            title: Text(productName),
+                            trailing: Text('Stok: $stockQty'),
+                          );
+                        },
+                      );
+                    }).toList(),
+                  );
+                },
               );
             },
           );
         },
-      ),
-    );
-  }
-
-  void _showEditDialog(BuildContext context, String productId, String currentName) {
-    final TextEditingController _editController =
-        TextEditingController(text: currentName);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit Warehouse'),
-        content: TextField(
-          controller: _editController,
-          decoration: InputDecoration(labelText: 'Nama Warehouse'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Batal'),
-          ),
-          TextButton(
-            onPressed: () async {
-              final newName = _editController.text.trim();
-              if (newName.isNotEmpty) {
-                await FirebaseFirestore.instance
-                    .collection('warehouses')
-                    .doc(productId)
-                    .update({'name': newName});
-              }
-              Navigator.pop(context);
-            },
-            child: Text('Simpan'),
-          ),
-        ],
       ),
     );
   }

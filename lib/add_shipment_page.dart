@@ -176,27 +176,62 @@ class _AddShipmentPageState extends State<AddShipmentPage> {
 
       for (var item in _items) {
         final productRef = FirebaseFirestore.instance.doc(item['product_ref']);
+        final warehouseRef = FirebaseFirestore.instance.doc(_selectedWarehouseRef!);
+        final double qty = item['qty'];
 
+        // Simpan detail pengiriman
         await shipmentRef.collection('details').add({
           'product_ref': productRef,
-          'qty': item['qty'],
+          'qty': qty,
           'price': item['price'],
           'subtotal': item['subtotal'],
           'unit_name': item['unit_name'],
         });
 
-        // Update stok produk
+        // 1. Kurangi stok produk global
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           DocumentSnapshot snapshot = await transaction.get(productRef);
           final currentStock = snapshot.get('stock') ?? 0;
-
-          if (currentStock < item['qty']) {
+          if (currentStock < qty) {
             throw Exception('Stok ${_getProductName(item['product_ref'])} tidak mencukupi.');
           }
-
-          final updatedStock = currentStock - item['qty'];
+          final updatedStock = currentStock - qty;
           transaction.update(productRef, {'stock': updatedStock});
         });
+
+        // 2. Kurangi stok gudang
+        await FirebaseFirestore.instance.runTransaction((transaction) async {
+          DocumentSnapshot snapshot = await transaction.get(warehouseRef);
+          final currentStock = snapshot.get('stock') ?? 0;
+          if (currentStock < qty) {
+            throw Exception('Stok gudang tidak mencukupi.');
+          }
+          final updatedStock = currentStock - qty;
+          transaction.update(warehouseRef, {'stock': updatedStock});
+        });
+
+        // 3. Kurangi stok gudang per produk
+        final QuerySnapshot stockQuery = await FirebaseFirestore.instance
+            .collection('warehousesStock')
+            .where('warehouse_ref', isEqualTo: warehouseRef)
+            .where('product_ref', isEqualTo: productRef)
+            .limit(1)
+            .get();
+
+        if (stockQuery.docs.isNotEmpty) {
+          final docRef = stockQuery.docs.first.reference;
+          await FirebaseFirestore.instance.runTransaction((transaction) async {
+            final stockSnapshot = await transaction.get(docRef);
+            final currentStock = stockSnapshot.get('stock') ?? 0;
+            if (currentStock < qty) {
+              throw Exception('Stok produk di gudang tidak mencukupi.');
+            }
+            final updatedStock = currentStock - qty;
+            transaction.update(docRef, {'stock': updatedStock});
+          });
+        } else {
+          throw Exception('Data stok produk di gudang tidak ditemukan.');
+        }
       }
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Pengiriman berhasil disimpan')));
